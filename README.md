@@ -36,6 +36,7 @@ PDF → Text Split → Embeddings → FAISS → Retriever → LLM → Summary
 
 ## 📁 Project Structure
 
+```
 academic-rag-summarizer/
 │
 ├── app.py # Streamlit web app
@@ -48,9 +49,9 @@ academic-rag-summarizer/
 │ └── samples/ # Academic PDFs
 │
 └── venv/ # Virtual environment (not committed)
+```
 
 
----
 
 ## ⚙️ Technologies Used
 
@@ -99,6 +100,7 @@ Example:
 
 data/samples/paper1.pdf
 ▶️ Usage
+
 ✅ Step 1: Build Vector Database
 python ingest.py
 This will process PDFs and create embeddings.
@@ -170,7 +172,9 @@ This project is developed for educational and hackathon purposes.
 ##  👤 Author
 
 **Somesh Singh**
+
 **B.Tech Information Technology**
+
 **Bharati Vidyapeeth (Deemed To Be University), College of Engineering, Pune**
 
 ##  🙏 Acknowledgements
