@@ -169,9 +169,9 @@ This project is developed for educational and hackathon purposes.
 
 ##  👤 Author
 
-Somesh Singh
-B.Tech Information Technology
-Bharati Vidyapeeth (Deemed To Be University), College of Engineering, Pune
+**Somesh Singh**
+**B.Tech Information Technology**
+**Bharati Vidyapeeth (Deemed To Be University), College of Engineering, Pune**
 
 ##  🙏 Acknowledgements
 
