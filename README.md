@@ -275,7 +275,9 @@ MCQs are displayed with 4 options (A–D) and the correct answer highlighted in 
 ## 👤 Author
 
 **Somesh Singh**
+
 **B.Tech Information Technology**
+
 **Bharati Vidyapeeth (Deemed To Be University), College of Engineering, Pune**
 
 ---
