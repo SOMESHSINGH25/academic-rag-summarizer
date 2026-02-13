@@ -124,7 +124,9 @@ def generate_questions(qa_chain, q_type: str, count: int, topic: str = ""):
         prompt_text = f"""
 Based on the academic paper content, generate exactly {count} multiple choice questions.{topic_clause}
 
-Return ONLY a valid JSON array with this exact structure:
+IMPORTANT: Return ONLY a valid JSON array. No explanation, no markdown, no extra text.
+Start your response with [ and end with ]
+
 [
   {{
     "question": "Question text here?",
@@ -138,56 +140,155 @@ Return ONLY a valid JSON array with this exact structure:
   }}
 ]
 
-Generate {count} such question objects. Return ONLY the JSON array, no other text.
+Generate {count} such question objects. Start with [ and end with ]. Nothing else.
 """
 
     elif q_type == "Short Answer":
         prompt_text = f"""
 Based on the academic paper content, generate exactly {count} short answer questions.{topic_clause}
-Each answer should be 2-3 sentences.
+Each answer should be 2-3 sentences maximum.
 
-Return ONLY a valid JSON array with this exact structure:
+IMPORTANT: Return ONLY a valid JSON array. No explanation, no markdown, no extra text.
+Start your response with [ and end with ]
+
 [
   {{
     "question": "Question text here?",
-    "answer": "Short answer here in 2-3 sentences."
+    "answer": "Short answer in 2-3 sentences."
   }}
 ]
 
-Generate {count} such objects. Return ONLY the JSON array, no other text.
+Generate {count} such objects. Start with [ and end with ]. Nothing else.
 """
 
     else:  # Long Answer
         prompt_text = f"""
-Based on the academic paper content, generate exactly {count} detailed long answer questions.{topic_clause}
-Each answer should be a thorough paragraph.
+Based on the academic paper content, generate exactly {count} long answer questions.{topic_clause}
+Each answer should be one detailed paragraph.
 
-Return ONLY a valid JSON array with this exact structure:
+IMPORTANT: Return ONLY a valid JSON array. No explanation, no markdown, no extra text.
+Start your response with [ and end with ]
+
 [
   {{
     "question": "Detailed question text here?",
-    "answer": "Comprehensive answer here in a full paragraph."
+    "answer": "Comprehensive paragraph answer here."
   }}
 ]
 
-Generate {count} such objects. Return ONLY the JSON array, no other text.
+Generate {count} such objects. Start with [ and end with ]. Nothing else.
 """
 
     result = qa_chain.invoke({"input": prompt_text})
     raw = result.get("answer", "[]")
 
-    # Parse JSON safely
+    return _parse_questions_safely(raw, q_type)
+
+
+def _parse_questions_safely(raw: str, q_type: str) -> list:
+    """
+    Robustly parse LLM output into a list of question dicts.
+    Tries 6 strategies before giving up.
+    """
+
+    # Strategy 1: Strip markdown fences and try direct parse
+    clean = re.sub(r"```(?:json)?", "", raw).replace("```", "").strip()
     try:
-        # Strip markdown code fences if present
-        clean = re.sub(r"```(?:json)?", "", raw).replace("```", "").strip()
-        questions = json.loads(clean)
-        return questions
+        parsed = json.loads(clean)
+        if isinstance(parsed, list) and len(parsed) > 0:
+            return parsed
     except json.JSONDecodeError:
-        # Fallback: try to extract JSON array from text
-        match = re.search(r'\[.*\]', raw, re.DOTALL)
-        if match:
-            try:
-                return json.loads(match.group())
-            except Exception:
-                pass
-        return [{"question": "Could not parse questions. Try again.", "answer": raw, "options": []}]
+        pass
+
+    # Strategy 2: Extract JSON array with regex (handles extra text before/after)
+    match = re.search(r'\[.*?\]', clean, re.DOTALL)
+    if match:
+        try:
+            parsed = json.loads(match.group())
+            if isinstance(parsed, list) and len(parsed) > 0:
+                return parsed
+        except json.JSONDecodeError:
+            pass
+
+    # Strategy 3: Fix common JSON issues — unescaped smart/curly quotes
+    try:
+        fixed = clean.replace('\u201c', '"').replace('\u201d', '"')
+        fixed = fixed.replace('\u2018', "'").replace('\u2019', "'")
+        parsed = json.loads(fixed)
+        if isinstance(parsed, list) and len(parsed) > 0:
+            return parsed
+    except json.JSONDecodeError:
+        pass
+
+    # Strategy 4: Find the outermost [ ... ] even if nested content is messy
+    start = clean.find('[')
+    end   = clean.rfind(']')
+    if start != -1 and end != -1 and end > start:
+        try:
+            parsed = json.loads(clean[start:end + 1])
+            if isinstance(parsed, list) and len(parsed) > 0:
+                return parsed
+        except json.JSONDecodeError:
+            pass
+
+    # Strategy 5: Extract individual {...} objects one by one
+    questions = []
+    for obj_match in re.finditer(r'\{[^{}]*\}', clean, re.DOTALL):
+        try:
+            obj = json.loads(obj_match.group())
+            if 'question' in obj:
+                questions.append(obj)
+        except json.JSONDecodeError:
+            continue
+
+    if questions:
+        return questions
+
+    # Strategy 6: Plain text fallback — extract Q&A pairs from raw text
+    # Handles cases where model ignores JSON instruction entirely
+    questions = []
+    lines = raw.strip().split('\n')
+    current_q = None
+    current_a = []
+
+    for line in lines:
+        line = line.strip()
+        if not line:
+            continue
+
+        # Detect question lines — numbered (1. / 1) ) or Q: prefix
+        q_match = re.match(r'^(?:\d+[\.\)]|Q\d*[\.\):])\s*(.+)', line)
+        # Detect answer lines — A: / Ans: / Answer: prefix
+        a_match = re.match(r'^(?:A(?:ns(?:wer)?)?[\.\):])\s*(.+)', line, re.IGNORECASE)
+
+        if q_match:
+            if current_q and current_a:
+                questions.append({
+                    "question": current_q,
+                    "answer": " ".join(current_a),
+                    "options": []
+                })
+            current_q = q_match.group(1)
+            current_a = []
+        elif a_match and current_q:
+            current_a.append(a_match.group(1))
+        elif current_q and current_a:
+            current_a.append(line)
+
+    if current_q and current_a:
+        questions.append({
+            "question": current_q,
+            "answer": " ".join(current_a),
+            "options": []
+        })
+
+    if questions:
+        return questions
+
+    # All strategies failed — show raw output as a readable card
+    # instead of an unhelpful error message
+    return [{
+        "question": f"Generated {q_type} content (tap to expand)",
+        "answer": raw.strip(),
+        "options": []
+    }]
