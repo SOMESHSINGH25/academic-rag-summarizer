@@ -1,0 +1,10 @@
+langchain
+faiss-cpu
+sentence-transformers
+transformers
+streamlit
+pypdf
+python-dotenv
+torch
+numpy
+scikit-learn
